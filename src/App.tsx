@@ -1,21 +1,38 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import gift from "@/assets/gift.png"; // 닫힌 선물
-import gift2 from "@/assets/gift2.png"; // 열린 선물
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import soundUrl from "@/assets/sound.mp3";
+import confetti from "canvas-confetti";
 
-type Ladder = boolean[][]; // [row][col] : col과 col+1 사이 가로줄이 있으면 true
+// ✅ 아래 선물 이미지: 닫힘(1~14), 열림(15)
+import gift1 from "@/assets/gift1.png";
+import gift2 from "@/assets/gift2.png";
+import gift3 from "@/assets/gift3.png";
+import gift4 from "@/assets/gift4.png";
+import gift5 from "@/assets/gift5.png";
+import gift6 from "@/assets/gift6.png";
+import gift7 from "@/assets/gift7.png";
+import gift8 from "@/assets/gift8.png";
+import gift9 from "@/assets/gift9.png";
+import gift10 from "@/assets/gift10.png";
+import gift11 from "@/assets/gift11.png";
+import gift12 from "@/assets/gift12.png";
+import gift13 from "@/assets/gift13.png";
+import gift14 from "@/assets/gift14.png";
+import gift15 from "@/assets/gift15.png";
+
+type Ladder = boolean[][];
 type Point = { x: number; y: number };
 
 const N = 14;
 const ROWS = 12;
 
-const W = 980;
 const H = 560;
+const PAD_X = 40;
+const TOP_H = 20;
+const BOT_H = 20;
 
-const PAD_X = 50;
-const TOP_H = 90;
-const BOT_H = 100;
+// ✅ TOP/BOTTOM 칸 사이 간격 (CSS와 계산이 반드시 같아야 정렬됨)
+const CELL_GAP = 10;
 
-// 14가지 색상
 const COLORS_14 = [
   "#ef4444",
   "#f97316",
@@ -32,6 +49,9 @@ const COLORS_14 = [
   "#a855f7",
   "#ec4899",
 ];
+
+const LADDER_STROKE = "rgba(148,163,184,.78)";
+const LADDER_STROKE_W = 2.6;
 
 function buildLadder(cols: number, rows: number): Ladder {
   const ladder: Ladder = Array.from({ length: rows }, () =>
@@ -65,21 +85,20 @@ function traceColsByRow(ladder: Ladder, startCol: number, cols: number) {
   return { endCol: col, colByRow };
 }
 
-function buildPathPoints(
+function buildPathPointsByCenters(
   ladder: Ladder,
   startCol: number,
   cols: number,
   rows: number,
-  xStep: number,
+  xCenters: number[],
   yTop: number,
   yBottom: number,
   yStep: number,
-  padX: number,
 ): { points: Point[]; endCol: number } {
   const { endCol, colByRow } = traceColsByRow(ladder, startCol, cols);
 
   const pts: Point[] = [];
-  pts.push({ x: padX + colByRow[0] * xStep, y: yTop });
+  pts.push({ x: xCenters[colByRow[0]], y: yTop });
 
   for (let r = 0; r < rows; r++) {
     const c1 = colByRow[r];
@@ -88,12 +107,12 @@ function buildPathPoints(
     const yMid = yTop + (r + 0.5) * yStep;
     const yNext = yTop + (r + 1) * yStep;
 
-    pts.push({ x: padX + c1 * xStep, y: yMid });
-    if (c2 !== c1) pts.push({ x: padX + c2 * xStep, y: yMid });
-    pts.push({ x: padX + c2 * xStep, y: yNext });
+    pts.push({ x: xCenters[c1], y: yMid });
+    if (c2 !== c1) pts.push({ x: xCenters[c2], y: yMid });
+    pts.push({ x: xCenters[c2], y: yNext });
   }
 
-  pts.push({ x: padX + endCol * xStep, y: yBottom });
+  pts.push({ x: xCenters[endCol], y: yBottom });
   return { points: pts, endCol };
 }
 
@@ -141,13 +160,11 @@ function slicePolyline(
   const target = total * Math.min(1, Math.max(0, t01));
   const out: Point[] = [points[0]];
 
-  // 완전히 포함되는 점들
   for (let i = 1; i < points.length; i++) {
     if (cum[i] < target) out.push(points[i]);
     else break;
   }
 
-  // 마지막 부분점
   const k = out.length - 1;
   if (k < points.length - 1) {
     const segStart = cum[k];
@@ -160,15 +177,14 @@ function slicePolyline(
       out.push({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u });
     }
   }
-
   return out;
 }
 
 type CompletedRun = {
-  startIdx: number; // 0~13 (친/구/..)
+  startIdx: number;
   color: string;
-  pathPoints: Point[]; // 완성된 경로(풀)
-  endCol: number; // 도착한 아래칸
+  pathPoints: Point[];
+  endCol: number;
 };
 
 export default function App() {
@@ -192,43 +208,148 @@ export default function App() {
     [],
   );
 
-  // 사다리는 고정(클릭해도 안 바뀜)
+  const closedGifts = useMemo(
+    () => [
+      gift1,
+      gift2,
+      gift3,
+      gift4,
+      gift5,
+      gift6,
+      gift7,
+      gift8,
+      gift9,
+      gift10,
+      gift11,
+      gift12,
+      gift13,
+      gift14,
+    ],
+    [],
+  );
+
+  const ladderRef = useRef<HTMLDivElement | null>(null);
+  const [ladderW, setLadderW] = useState(980);
+
+  useEffect(() => {
+    const el = ladderRef.current;
+    if (!el) return;
+
+    const ro = new ResizeObserver(() => {
+      const w = el.getBoundingClientRect().width;
+      setLadderW(Math.max(320, Math.floor(w)));
+    });
+
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 사운드
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playSound = () => {
+    const a = audioRef.current;
+    if (!a) return;
+    try {
+      a.currentTime = 0;
+      const p = a.play();
+      if (p) p.catch(() => {});
+    } catch {
+      // ignore
+    }
+  };
+
+  // ✅ 성공 폭죽(FlipCard 정답 느낌처럼) - 색상은 doneColor 그대로
+  const fireSuccessConfetti = (color: string) => {
+    const defaults = {
+      origin: { x: 0.5, y: 0.52 },
+      zIndex: 10000,
+      disableForReducedMotion: true,
+    };
+
+    confetti({
+      ...defaults,
+      particleCount: 110,
+      spread: 360,
+      startVelocity: 55,
+      colors: [color, color, color, "#ffffff"],
+      shapes: ["circle", "square"],
+      scalar: 2.0,
+      ticks: 120,
+      gravity: 0.75,
+      decay: 0.9,
+    });
+
+    window.setTimeout(() => {
+      confetti({
+        ...defaults,
+        particleCount: 70,
+        spread: 300,
+        startVelocity: 45,
+        colors: [color, color, "#ffffff"],
+        shapes: ["circle"],
+        scalar: 1.8,
+        ticks: 95,
+        gravity: 0.85,
+        decay: 0.91,
+      });
+    }, 90);
+
+    window.setTimeout(() => {
+      confetti({
+        ...defaults,
+        particleCount: 40,
+        spread: 70,
+        startVelocity: 70,
+        colors: [color, "#ffffff"],
+        shapes: ["square"],
+        scalar: 1.6,
+        ticks: 80,
+        gravity: 0.2,
+        decay: 0.92,
+      });
+    }, 160);
+  };
+
   const [ladder, setLadder] = useState<Ladder>(() => buildLadder(N, ROWS));
 
-  // 지금 애니메이션 중인 시작 인덱스
   const [picked, setPicked] = useState<number | null>(null);
   const [animT, setAnimT] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
-  // 누적 결과(경로 유지)
   const [completed, setCompleted] = useState<CompletedRun[]>([]);
-  // 아래 선물 열린 상태 유지 (도착 column 기준)
   const [openedCols, setOpenedCols] = useState<Record<number, boolean>>({});
 
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number>(0);
 
-  const xStep = (W - PAD_X * 2) / (N - 1);
   const yTop = TOP_H;
   const yBottom = H - BOT_H;
   const yStep = (yBottom - yTop) / ROWS;
 
-  const activeColor = picked == null ? "#111" : COLORS_14[picked];
+  const xCenters = useMemo(() => {
+    const innerW = ladderW - PAD_X * 2;
+    const colW = (innerW - CELL_GAP * (N - 1)) / N;
+    return Array.from({ length: N }, (_, i) => {
+      const left = PAD_X + i * (colW + CELL_GAP);
+      return left + colW / 2;
+    });
+  }, [ladderW]);
+
+  const activeColor = picked == null ? "#111827" : COLORS_14[picked];
 
   const path = useMemo(() => {
     if (picked == null) return null;
-    return buildPathPoints(
+    return buildPathPointsByCenters(
       ladder,
       picked,
       N,
       ROWS,
-      xStep,
+      xCenters,
       yTop,
       yBottom,
       yStep,
-      PAD_X,
     );
-  }, [ladder, picked, xStep, yTop, yBottom, yStep]);
+  }, [ladder, picked, xCenters, yTop, yBottom, yStep]);
 
   const lengths = useMemo(() => {
     if (!path) return null;
@@ -242,7 +363,9 @@ export default function App() {
 
   const drawnPathPoints = useMemo(() => {
     if (!path || !lengths) return null;
-    return slicePolyline(path.points, lengths.cum, lengths.total, animT);
+    // ✅ 빨간(0번)에서 초반 선이 잘 안 보이는 느낌 방지: 최소 진행률을 0.02로
+    const t = Math.max(0.02, animT);
+    return slicePolyline(path.points, lengths.cum, lengths.total, t);
   }, [path, lengths, animT]);
 
   const startAnimation = () => {
@@ -254,27 +377,24 @@ export default function App() {
     setAnimT(0);
     startRef.current = performance.now();
 
-    const DURATION = 3200; // ✅ 더 천천히
+    const DURATION = 3600;
 
     const tick = (now: number) => {
       const elapsed = now - startRef.current;
       const t = Math.min(1, elapsed / DURATION);
 
-      // 부드러운 easeInOut
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
       setAnimT(eased);
 
       if (t < 1) {
         rafRef.current = requestAnimationFrame(tick);
       } else {
-        // ✅ 완주: 경로/선물 상태를 "누적"으로 저장
         const doneStart = picked;
         const doneColor = COLORS_14[doneStart];
         const donePath = path.points;
         const doneEnd = path.endCol;
 
         setCompleted((prev) => {
-          // 같은 시작(친/구/..)을 여러 번 누르면 중복 저장 원치 않으면 여기서 막기
           const exists = prev.some((r) => r.startIdx === doneStart);
           if (exists) return prev;
           return [
@@ -289,6 +409,10 @@ export default function App() {
         });
 
         setOpenedCols((prev) => ({ ...prev, [doneEnd]: true }));
+
+        // ✅ ✅ ✅ 성공 이펙트: confetti (FlipCard 정답 느낌)
+        fireSuccessConfetti(doneColor);
+        playSound();
 
         setIsAnimating(false);
         rafRef.current = null;
@@ -306,7 +430,6 @@ export default function App() {
 
   const onPick = (idx: number) => {
     if (isAnimating) return;
-    // 이미 완료한 글자면 그냥 무시(원하면 다시 애니메이션 허용도 가능)
     if (completed.some((r) => r.startIdx === idx)) return;
     setPicked(idx);
   };
@@ -326,294 +449,350 @@ export default function App() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#f7f7f8",
-        color: "#111",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 24,
-        fontFamily:
-          'ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"',
-      }}
-    >
-      <div
-        style={{
-          width: "min(1020px, 100%)",
-          background: "white",
-          borderRadius: 16,
-          boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-          padding: 18,
-        }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            alignItems: "baseline",
-            justifyContent: "space-between",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>사다리타기</div>
-            <div style={{ fontSize: 13, color: "#666", marginTop: 4 }}>
-              누르면 해당 색 경로가 내려가며 그려지고, 도착한 선물이 열린 채로
-              유지돼요.
-            </div>
-          </div>
+    <div className="page">
+      <audio ref={audioRef} src={soundUrl} preload="auto" />
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              onClick={onRebuild}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                cursor: isAnimating ? "not-allowed" : "pointer",
-                opacity: isAnimating ? 0.6 : 1,
-                fontWeight: 700,
-              }}
-            >
-              사다리 다시뽑기
-            </button>
-            <button
-              onClick={onReset}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 12,
-                border: "1px solid #e5e7eb",
-                background: "#fff",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              초기화
-            </button>
-          </div>
-        </div>
+      <style>{`
+        .page{
+          min-height:100vh;
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          padding:28px;
+          background:
+            radial-gradient(1200px 600px at 20% 10%, rgba(255, 205, 231, .55), transparent 60%),
+            radial-gradient(900px 500px at 80% 20%, rgba(187, 255, 241, .55), transparent 60%),
+            radial-gradient(900px 600px at 50% 90%, rgba(196, 211, 255, .55), transparent 60%),
+            linear-gradient(180deg, #fbfbff 0%, #f7f7fb 55%, #faf7ff 100%);
+          font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+          color:#1f2937;
+          position:relative;
+          overflow:hidden;
+        }
 
-        {/* TOP 14칸 */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${N}, 1fr)`,
-            gap: 8,
-            marginTop: 14,
-            marginBottom: 12,
-          }}
-        >
-          {topCells.map((t, i) => {
-            const done = completed.some((r) => r.startIdx === i);
-            const active = picked === i;
-            const c = COLORS_14[i];
+        .blob{
+          position:absolute;
+          width:420px; height:420px;
+          filter: blur(28px);
+          opacity:.35;
+          border-radius:999px;
+          animation: floaty 7s ease-in-out infinite;
+          pointer-events:none;
+        }
+        .b1{ left:-120px; top:-140px; background: #ffb6d5; }
+        .b2{ right:-160px; top:-120px; background: #a7f3d0; animation-delay: -2.5s;}
+        .b3{ left:20%; bottom:-220px; background: #b7c7ff; animation-delay: -4s;}
+        @keyframes floaty{
+          0%,100%{ transform: translate(0,0) scale(1); }
+          50%{ transform: translate(0,-18px) scale(1.04); }
+        }
 
-            return (
-              <button
-                key={i}
-                onClick={() => onPick(i)}
-                disabled={isAnimating || done}
-                style={{
-                  height: 48,
-                  borderRadius: 14,
-                  border: done
-                    ? `2px solid ${c}`
-                    : active
-                      ? `2px solid ${c}`
-                      : "1px solid #e5e7eb",
-                  background: done ? "#fff" : active ? c : "#fff",
-                  color: active ? "#fff" : "#111",
-                  cursor: isAnimating || done ? "not-allowed" : "pointer",
-                  opacity: isAnimating ? 0.85 : done ? 0.7 : 1,
-                  fontSize: 18,
-                  fontWeight: 900,
-                }}
-                title={done ? "이미 완료됨" : "여기를 누르면 시작"}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
+        .card{
+          width:min(1040px, 100%);
+          background: rgba(255,255,255,.82);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255,255,255,.7);
+          border-radius: 22px;
+          box-shadow: 0 18px 50px rgba(17,24,39,.12);
+          padding: 18px;
+          position:relative;
+        }
 
-        {/* LADDER SVG */}
-        <div style={{ width: "100%", overflowX: "auto" }}>
-          <svg
-            width={W}
-            height={H}
-            viewBox={`0 0 ${W} ${H}`}
-            style={{
-              display: "block",
-              margin: "0 auto",
-              borderRadius: 14,
-              background: "#fbfbfc",
-              border: "1px solid #eef0f3",
-            }}
-          >
-            {/* ✅ 세로줄은 항상 회색(선택해도 색 안 바뀜) */}
-            {Array.from({ length: N }, (_, c) => {
-              const x = PAD_X + c * xStep;
+        .titleRow{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+        .title{ display:flex; align-items:center; gap:10px; font-weight:900; font-size:20px; letter-spacing:-.02em; }
+        .badge{
+          padding:6px 10px; border-radius:999px;
+          background: rgba(255, 255, 255, .9);
+          border: 1px solid rgba(229,231,235,.9);
+          font-size:12px; font-weight:800;
+        }
+        .subtitle{ margin-top:6px; font-size:13px; color:#6b7280; }
+        .btnRow{ display:flex; gap:8px; }
+        .btn{
+          padding:10px 12px; border-radius:14px;
+          border:1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.9);
+          cursor:pointer; font-weight:900;
+          box-shadow: 0 6px 16px rgba(0,0,0,.06);
+          transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .btn:hover{ transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
+        .btn:active{ transform: translateY(0px) scale(.98); }
+        .btn[disabled]{ opacity:.6; cursor:not-allowed; }
+
+        .laneBox{ width: 100%; max-width: 100%; margin: 0 auto; }
+
+        .gridTop{
+          display:grid;
+          grid-template-columns: repeat(${N}, minmax(0, 1fr));
+          gap: ${CELL_GAP}px;
+          padding-left: ${PAD_X}px;
+          padding-right: ${PAD_X}px;
+          margin-top: 14px;
+          margin-bottom: 12px;
+        }
+        .gridBottom{
+          display:grid;
+          grid-template-columns: repeat(${N}, minmax(0, 1fr));
+          gap: ${CELL_GAP}px;
+          padding-left: ${PAD_X}px;
+          padding-right: ${PAD_X}px;
+          margin-top:12px;
+        }
+
+        .cellBtn{
+          width:100%;
+          height: 50px;
+          border-radius: 16px;
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.92);
+          cursor:pointer;
+          font-size:18px;
+          font-weight:900;
+          box-shadow: 0 8px 18px rgba(0,0,0,.06);
+          transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .cellBtn:hover{ transform: translateY(-1px); box-shadow: 0 12px 26px rgba(0,0,0,.08); }
+        .cellBtn:active{ transform: translateY(0px) scale(.98); }
+        .cellBtn[disabled]{ cursor:not-allowed; opacity:.7; }
+
+        .ladderWrap{ width: 100%; margin-top: 6px; }
+        .svgBox{
+          display:block;
+          width:100%;
+          height:auto;
+          background: transparent;
+          border: none;
+          border-radius: 0;
+        }
+
+        .giftCell{
+          width:100%;
+          height: 58px;
+          border-radius: 16px;
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.92);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          padding: 6px;
+          box-shadow: 0 8px 18px rgba(0,0,0,.06);
+        }
+      `}</style>
+
+      <div className="blob b1" />
+      <div className="blob b2" />
+      <div className="blob b3" />
+
+      <div className="card">
+        <div ref={ladderRef} className="laneBox">
+          {/* TOP */}
+          <div className="gridTop">
+            {topCells.map((t, i) => {
+              const done = completed.some((r) => r.startIdx === i);
+              const active = picked === i;
+              const c = COLORS_14[i];
+
+              // ✅ 완료(done)도 배경색을 해당 색으로 유지
+              const filled = done || active;
+
+              const bg = filled ? c : "rgba(255,255,255,.92)";
+              const border = filled
+                ? `2px solid ${c}`
+                : "1px solid rgba(229,231,235,.95)";
+              const color = filled ? "#fff" : "#111827";
+
               return (
+                <button
+                  key={i}
+                  className="cellBtn"
+                  onClick={() => onPick(i)}
+                  disabled={isAnimating || done}
+                  style={{ background: bg, border, color }}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* LADDER */}
+          <div className="ladderWrap">
+            <svg
+              className="svgBox"
+              width={ladderW}
+              height={H}
+              viewBox={`0 0 ${ladderW} ${H}`}
+              preserveAspectRatio="none"
+            >
+              <defs>
+                <filter
+                  id="softGlow"
+                  x="-30%"
+                  y="-30%"
+                  width="160%"
+                  height="160%"
+                >
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge>
+                    <feMergeNode in="blur" />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
+              </defs>
+
+              {/* 세로줄 */}
+              {xCenters.map((x, c) => (
                 <line
                   key={`v-${c}`}
                   x1={x}
                   y1={yTop}
                   x2={x}
                   y2={yBottom}
-                  stroke="#c9ced6"
-                  strokeWidth={2}
+                  stroke={LADDER_STROKE}
+                  strokeWidth={LADDER_STROKE_W}
                   strokeLinecap="round"
-                  opacity={0.9}
                 />
-              );
-            })}
+              ))}
 
-            {/* 가로줄 */}
-            {ladder.map((row, r) => {
-              const y = yTop + (r + 0.5) * yStep;
-              return row.map((has, c) => {
-                if (!has) return null;
-                const x1 = PAD_X + c * xStep;
-                const x2 = PAD_X + (c + 1) * xStep;
-                return (
-                  <line
-                    key={`h-${r}-${c}`}
-                    x1={x1}
-                    y1={y}
-                    x2={x2}
-                    y2={y}
-                    stroke="#9aa3af"
-                    strokeWidth={3}
-                    strokeLinecap="round"
-                  />
-                );
-              });
-            })}
+              {/* 가로줄 */}
+              {ladder.map((row, r) => {
+                const y = yTop + (r + 0.5) * yStep;
+                return row.map((has, c) => {
+                  if (!has) return null;
+                  const x1 = xCenters[c];
+                  const x2 = xCenters[c + 1];
+                  return (
+                    <line
+                      key={`h-${r}-${c}`}
+                      x1={x1}
+                      y1={y}
+                      x2={x2}
+                      y2={y}
+                      stroke={LADDER_STROKE}
+                      strokeWidth={LADDER_STROKE_W}
+                      strokeLinecap="round"
+                    />
+                  );
+                });
+              })}
 
-            {/* ✅ 완료된 경로들(유지) */}
-            {completed.map((run) => (
-              <polyline
-                key={`done-${run.startIdx}`}
-                points={run.pathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                fill="none"
-                stroke={run.color}
-                strokeWidth={6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.95}
-              />
-            ))}
+              {/* 완료된 경로들 */}
+              {completed.map((run) => (
+                <polyline
+                  key={`done-${run.startIdx}`}
+                  points={run.pathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
+                  fill="none"
+                  stroke={run.color}
+                  strokeWidth={7}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  // filter="url(#softGlow)"
+                  opacity={0.92}
+                />
+              ))}
 
-            {/* ✅ 진행 중인 경로(내려가는 만큼만) */}
-            {drawnPathPoints && drawnPathPoints.length >= 2 && (
-              <polyline
-                points={drawnPathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                fill="none"
-                stroke={activeColor}
-                strokeWidth={6}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                opacity={0.95}
-              />
-            )}
-
-            {/* ✅ 진행 중 토큰 */}
-            {tokenPos && (
-              <>
-                <circle
-                  cx={tokenPos.x}
-                  cy={tokenPos.y}
-                  r={9}
-                  fill={activeColor}
+              {/* 진행 중 경로 */}
+              {drawnPathPoints && drawnPathPoints.length >= 2 && (
+                <polyline
+                  points={drawnPathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
+                  fill="none"
+                  stroke={activeColor}
+                  strokeWidth={7}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  // filter="url(#softGlow)"
                   opacity={0.95}
                 />
-                <circle
-                  cx={tokenPos.x}
-                  cy={tokenPos.y}
-                  r={18}
-                  fill={activeColor}
-                  opacity={0.12}
-                />
-              </>
-            )}
+              )}
 
-            {/* ✅ 완료된 시작점 토큰(아래에 남기기) */}
-            {completed.map((run) => {
-              const last = run.pathPoints[run.pathPoints.length - 1];
+              {/* 진행 중 토큰 */}
+              {tokenPos && (
+                <g>
+                  <circle
+                    cx={tokenPos.x}
+                    cy={tokenPos.y}
+                    r={12}
+                    fill={activeColor}
+                    opacity={0.95}
+                  />
+                  <circle
+                    cx={tokenPos.x}
+                    cy={tokenPos.y}
+                    r={22}
+                    fill={activeColor}
+                    opacity={0.12}
+                  />
+                  <circle
+                    cx={tokenPos.x - 4}
+                    cy={tokenPos.y - 2}
+                    r={1.6}
+                    fill="rgba(255,255,255,.95)"
+                  />
+                  <circle
+                    cx={tokenPos.x + 4}
+                    cy={tokenPos.y - 2}
+                    r={1.6}
+                    fill="rgba(255,255,255,.95)"
+                  />
+                  <path
+                    d={`M ${tokenPos.x - 4} ${tokenPos.y + 4} Q ${tokenPos.x} ${tokenPos.y + 7} ${tokenPos.x + 4} ${tokenPos.y + 4}`}
+                    stroke="rgba(255,255,255,.9)"
+                    strokeWidth="1.6"
+                    fill="none"
+                    strokeLinecap="round"
+                  />
+                </g>
+              )}
+            </svg>
+          </div>
+
+          {/* BOTTOM */}
+          <div className="gridBottom">
+            {Array.from({ length: N }, (_, i) => {
+              const opened = !!openedCols[i];
+              const lastRunToHere = [...completed]
+                .reverse()
+                .find((r) => r.endCol === i);
+              const borderColor = opened
+                ? (lastRunToHere?.color ?? "#e5e7eb")
+                : "rgba(229,231,235,.95)";
+
+              const imgSrc = opened ? gift15 : closedGifts[i];
+
               return (
-                <circle
-                  key={`done-dot-${run.startIdx}`}
-                  cx={last.x}
-                  cy={last.y}
-                  r={7}
-                  fill={run.color}
-                  opacity={0.9}
-                />
+                <div
+                  className="giftCell"
+                  key={i}
+                  style={{
+                    border: opened
+                      ? `2px solid ${borderColor}`
+                      : `1px solid ${borderColor}`,
+                  }}
+                >
+                  <img
+                    src={imgSrc}
+                    alt={`gift-${i + 1}`}
+                    style={{
+                      width: 46,
+                      height: 46,
+                      objectFit: "contain",
+                      filter: opened
+                        ? "drop-shadow(0 0 10px rgba(0,0,0,0.18))"
+                        : "none",
+                      transform: opened ? "scale(1.06)" : "scale(1)",
+                      transition: "transform 160ms ease",
+                    }}
+                  />
+                </div>
               );
             })}
-          </svg>
-        </div>
-
-        {/* BOTTOM 14칸 (도착한 칸은 gift2로 "열린 상태" 유지) */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: `repeat(${N}, 1fr)`,
-            gap: 8,
-            marginTop: 12,
-          }}
-        >
-          {Array.from({ length: N }, (_, i) => {
-            const opened = !!openedCols[i];
-            // 열린 칸의 테두리는 "마지막으로 내려온 색"이 아니라,
-            // 그 칸에 도착했던 경로 색(여러 개면 마지막 것)으로 칠해주기
-            const lastRunToHere = [...completed]
-              .reverse()
-              .find((r) => r.endCol === i);
-            const borderColor = lastRunToHere?.color ?? "#e5e7eb";
-
-            return (
-              <div
-                key={i}
-                style={{
-                  height: 56,
-                  borderRadius: 14,
-                  border: opened
-                    ? `2px solid ${borderColor}`
-                    : "1px solid #e5e7eb",
-                  background: "#fff",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 6,
-                }}
-              >
-                <img
-                  src={opened ? gift2 : gift}
-                  alt="gift"
-                  style={{
-                    width: 40,
-                    height: 40,
-                    objectFit: "contain",
-                    filter: opened
-                      ? "drop-shadow(0 0 10px rgba(0,0,0,0.25))"
-                      : "none",
-                    transform: opened ? "scale(1.05)" : "scale(1)",
-                    transition: "transform 160ms ease",
-                  }}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-          * 한 번 완료된 글자는 비활성화되고(중복 방지), 경로/선물 상태는 계속
-          누적돼요.
+          </div>
         </div>
       </div>
+
+      {/* audio */}
+      <audio ref={audioRef} src={soundUrl} preload="auto" />
     </div>
   );
 }
