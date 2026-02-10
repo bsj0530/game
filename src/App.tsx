@@ -228,6 +228,47 @@ export default function App() {
     [],
   );
 
+  // ✅ "어떤 화면비에서도 스크롤 없이 딱 맞게" = 카드 전체를 scale로 맞추기
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const el = cardRef.current;
+    if (!el) return;
+
+    const recompute = () => {
+      // transform은 레이아웃 크기에 영향을 안 주므로 offsetWidth/Height는 "원래 크기"를 준다
+      const baseW = el.offsetWidth;
+      const baseH = el.offsetHeight;
+
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+
+      // page padding 28px * 2 만큼 안전 여유
+      const safePad = 56;
+
+      const sx = (vw - safePad) / Math.max(1, baseW);
+      const sy = (vh - safePad) / Math.max(1, baseH);
+
+      setScale(Math.min(1, sx, sy));
+    };
+
+    // 초기 1회 (폰트/이미지 로딩 후 정확해지도록 rAF)
+    const raf = requestAnimationFrame(recompute);
+
+    const ro = new ResizeObserver(() => recompute());
+    ro.observe(el);
+
+    window.addEventListener("resize", recompute);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      window.removeEventListener("resize", recompute);
+    };
+  }, []);
+
+  // ✅ ladder 폭은 laneBox 기준으로 계속 맞춤
   const ladderRef = useRef<HTMLDivElement | null>(null);
   const [ladderW, setLadderW] = useState(980);
 
@@ -258,7 +299,6 @@ export default function App() {
     }
   };
 
-  // ✅ 성공 폭죽(FlipCard 정답 느낌처럼) - 색상은 doneColor 그대로
   const fireSuccessConfetti = (color: string) => {
     const defaults = {
       origin: { x: 0.5, y: 0.52 },
@@ -363,7 +403,6 @@ export default function App() {
 
   const drawnPathPoints = useMemo(() => {
     if (!path || !lengths) return null;
-    // ✅ 빨간(0번)에서 초반 선이 잘 안 보이는 느낌 방지: 최소 진행률을 0.02로
     const t = Math.max(0.02, animT);
     return slicePolyline(path.points, lengths.cum, lengths.total, t);
   }, [path, lengths, animT]);
@@ -410,7 +449,6 @@ export default function App() {
 
         setOpenedCols((prev) => ({ ...prev, [doneEnd]: true }));
 
-        // ✅ ✅ ✅ 성공 이펙트: confetti (FlipCard 정답 느낌)
         fireSuccessConfetti(doneColor);
         playSound();
 
@@ -450,15 +488,17 @@ export default function App() {
 
   return (
     <div className="page">
+      {/* audio (한 번만) */}
       <audio ref={audioRef} src={soundUrl} preload="auto" />
 
       <style>{`
         .page{
-          min-height:100vh;
+          height:100dvh;
           display:flex;
           align-items:center;
           justify-content:center;
           padding:28px;
+          overflow:hidden; /* ✅ 스크롤 방지 */
           background:
             radial-gradient(1200px 600px at 20% 10%, rgba(255, 205, 231, .55), transparent 60%),
             radial-gradient(900px 500px at 80% 20%, rgba(187, 255, 241, .55), transparent 60%),
@@ -467,7 +507,6 @@ export default function App() {
           font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
           color:#1f2937;
           position:relative;
-          overflow:hidden;
         }
 
         .blob{
@@ -487,6 +526,12 @@ export default function App() {
           50%{ transform: translate(0,-18px) scale(1.04); }
         }
 
+        /* ✅ 카드 전체를 화면에 맞게 scale */
+        .fitWrap{
+          transform-origin:center;
+          will-change: transform;
+        }
+
         .card{
           width:min(1040px, 100%);
           background: rgba(255,255,255,.82);
@@ -497,28 +542,6 @@ export default function App() {
           padding: 18px;
           position:relative;
         }
-
-        .titleRow{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-        .title{ display:flex; align-items:center; gap:10px; font-weight:900; font-size:20px; letter-spacing:-.02em; }
-        .badge{
-          padding:6px 10px; border-radius:999px;
-          background: rgba(255, 255, 255, .9);
-          border: 1px solid rgba(229,231,235,.9);
-          font-size:12px; font-weight:800;
-        }
-        .subtitle{ margin-top:6px; font-size:13px; color:#6b7280; }
-        .btnRow{ display:flex; gap:8px; }
-        .btn{
-          padding:10px 12px; border-radius:14px;
-          border:1px solid rgba(229,231,235,.95);
-          background: rgba(255,255,255,.9);
-          cursor:pointer; font-weight:900;
-          box-shadow: 0 6px 16px rgba(0,0,0,.06);
-          transition: transform .12s ease, box-shadow .12s ease;
-        }
-        .btn:hover{ transform: translateY(-1px); box-shadow: 0 10px 22px rgba(0,0,0,.08); }
-        .btn:active{ transform: translateY(0px) scale(.98); }
-        .btn[disabled]{ opacity:.6; cursor:not-allowed; }
 
         .laneBox{ width: 100%; max-width: 100%; margin: 0 auto; }
 
@@ -584,215 +607,208 @@ export default function App() {
       <div className="blob b2" />
       <div className="blob b3" />
 
-      <div className="card">
-        <div ref={ladderRef} className="laneBox">
-          {/* TOP */}
-          <div className="gridTop">
-            {topCells.map((t, i) => {
-              const done = completed.some((r) => r.startIdx === i);
-              const active = picked === i;
-              const c = COLORS_14[i];
+      <div className="fitWrap" style={{ transform: `scale(${scale})` }}>
+        <div ref={cardRef} className="card">
+          <div ref={ladderRef} className="laneBox">
+            {/* TOP */}
+            <div className="gridTop">
+              {topCells.map((t, i) => {
+                const done = completed.some((r) => r.startIdx === i);
+                const active = picked === i;
+                const c = COLORS_14[i];
 
-              // ✅ 완료(done)도 배경색을 해당 색으로 유지
-              const filled = done || active;
+                // ✅ 완료(done)도 배경색 유지
+                const filled = done || active;
 
-              const bg = filled ? c : "rgba(255,255,255,.92)";
-              const border = filled
-                ? `2px solid ${c}`
-                : "1px solid rgba(229,231,235,.95)";
-              const color = filled ? "#fff" : "#111827";
+                const bg = filled ? c : "rgba(255,255,255,.92)";
+                const border = filled
+                  ? `2px solid ${c}`
+                  : "1px solid rgba(229,231,235,.95)";
+                const color = filled ? "#fff" : "#111827";
 
-              return (
-                <button
-                  key={i}
-                  className="cellBtn"
-                  onClick={() => onPick(i)}
-                  disabled={isAnimating || done}
-                  style={{ background: bg, border, color }}
-                >
-                  {t}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* LADDER */}
-          <div className="ladderWrap">
-            <svg
-              className="svgBox"
-              width={ladderW}
-              height={H}
-              viewBox={`0 0 ${ladderW} ${H}`}
-              preserveAspectRatio="none"
-            >
-              <defs>
-                <filter
-                  id="softGlow"
-                  x="-30%"
-                  y="-30%"
-                  width="160%"
-                  height="160%"
-                >
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-
-              {/* 세로줄 */}
-              {xCenters.map((x, c) => (
-                <line
-                  key={`v-${c}`}
-                  x1={x}
-                  y1={yTop}
-                  x2={x}
-                  y2={yBottom}
-                  stroke={LADDER_STROKE}
-                  strokeWidth={LADDER_STROKE_W}
-                  strokeLinecap="round"
-                />
-              ))}
-
-              {/* 가로줄 */}
-              {ladder.map((row, r) => {
-                const y = yTop + (r + 0.5) * yStep;
-                return row.map((has, c) => {
-                  if (!has) return null;
-                  const x1 = xCenters[c];
-                  const x2 = xCenters[c + 1];
-                  return (
-                    <line
-                      key={`h-${r}-${c}`}
-                      x1={x1}
-                      y1={y}
-                      x2={x2}
-                      y2={y}
-                      stroke={LADDER_STROKE}
-                      strokeWidth={LADDER_STROKE_W}
-                      strokeLinecap="round"
-                    />
-                  );
-                });
+                return (
+                  <button
+                    key={i}
+                    className="cellBtn"
+                    onClick={() => onPick(i)}
+                    disabled={isAnimating || done}
+                    style={{ background: bg, border, color }}
+                  >
+                    {t}
+                  </button>
+                );
               })}
+            </div>
 
-              {/* 완료된 경로들 */}
-              {completed.map((run) => (
-                <polyline
-                  key={`done-${run.startIdx}`}
-                  points={run.pathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill="none"
-                  stroke={run.color}
-                  strokeWidth={7}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  // filter="url(#softGlow)"
-                  opacity={0.92}
-                />
-              ))}
-
-              {/* 진행 중 경로 */}
-              {drawnPathPoints && drawnPathPoints.length >= 2 && (
-                <polyline
-                  points={drawnPathPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill="none"
-                  stroke={activeColor}
-                  strokeWidth={7}
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  // filter="url(#softGlow)"
-                  opacity={0.95}
-                />
-              )}
-
-              {/* 진행 중 토큰 */}
-              {tokenPos && (
-                <g>
-                  <circle
-                    cx={tokenPos.x}
-                    cy={tokenPos.y}
-                    r={12}
-                    fill={activeColor}
-                    opacity={0.95}
-                  />
-                  <circle
-                    cx={tokenPos.x}
-                    cy={tokenPos.y}
-                    r={22}
-                    fill={activeColor}
-                    opacity={0.12}
-                  />
-                  <circle
-                    cx={tokenPos.x - 4}
-                    cy={tokenPos.y - 2}
-                    r={1.6}
-                    fill="rgba(255,255,255,.95)"
-                  />
-                  <circle
-                    cx={tokenPos.x + 4}
-                    cy={tokenPos.y - 2}
-                    r={1.6}
-                    fill="rgba(255,255,255,.95)"
-                  />
-                  <path
-                    d={`M ${tokenPos.x - 4} ${tokenPos.y + 4} Q ${tokenPos.x} ${tokenPos.y + 7} ${tokenPos.x + 4} ${tokenPos.y + 4}`}
-                    stroke="rgba(255,255,255,.9)"
-                    strokeWidth="1.6"
-                    fill="none"
+            {/* LADDER */}
+            <div className="ladderWrap">
+              <svg
+                className="svgBox"
+                width={ladderW}
+                height={H}
+                viewBox={`0 0 ${ladderW} ${H}`}
+                preserveAspectRatio="none"
+              >
+                {/* 세로줄 */}
+                {xCenters.map((x, c) => (
+                  <line
+                    key={`v-${c}`}
+                    x1={x}
+                    y1={yTop}
+                    x2={x}
+                    y2={yBottom}
+                    stroke={LADDER_STROKE}
+                    strokeWidth={LADDER_STROKE_W}
                     strokeLinecap="round"
                   />
-                </g>
-              )}
-            </svg>
-          </div>
+                ))}
 
-          {/* BOTTOM */}
-          <div className="gridBottom">
-            {Array.from({ length: N }, (_, i) => {
-              const opened = !!openedCols[i];
-              const lastRunToHere = [...completed]
-                .reverse()
-                .find((r) => r.endCol === i);
-              const borderColor = opened
-                ? (lastRunToHere?.color ?? "#e5e7eb")
-                : "rgba(229,231,235,.95)";
+                {/* 가로줄 */}
+                {ladder.map((row, r) => {
+                  const y = yTop + (r + 0.5) * yStep;
+                  return row.map((has, c) => {
+                    if (!has) return null;
+                    const x1 = xCenters[c];
+                    const x2 = xCenters[c + 1];
+                    return (
+                      <line
+                        key={`h-${r}-${c}`}
+                        x1={x1}
+                        y1={y}
+                        x2={x2}
+                        y2={y}
+                        stroke={LADDER_STROKE}
+                        strokeWidth={LADDER_STROKE_W}
+                        strokeLinecap="round"
+                      />
+                    );
+                  });
+                })}
 
-              const imgSrc = opened ? gift15 : closedGifts[i];
-
-              return (
-                <div
-                  className="giftCell"
-                  key={i}
-                  style={{
-                    border: opened
-                      ? `2px solid ${borderColor}`
-                      : `1px solid ${borderColor}`,
-                  }}
-                >
-                  <img
-                    src={imgSrc}
-                    alt={`gift-${i + 1}`}
-                    style={{
-                      width: 46,
-                      height: 46,
-                      objectFit: "contain",
-                      filter: opened
-                        ? "drop-shadow(0 0 10px rgba(0,0,0,0.18))"
-                        : "none",
-                      transform: opened ? "scale(1.06)" : "scale(1)",
-                      transition: "transform 160ms ease",
-                    }}
+                {/* 완료된 경로들 */}
+                {completed.map((run) => (
+                  <polyline
+                    key={`done-${run.startIdx}`}
+                    points={run.pathPoints
+                      .map((p) => `${p.x},${p.y}`)
+                      .join(" ")}
+                    fill="none"
+                    stroke={run.color}
+                    strokeWidth={7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.92}
                   />
-                </div>
-              );
-            })}
+                ))}
+
+                {/* 진행 중 경로 */}
+                {drawnPathPoints && drawnPathPoints.length >= 2 && (
+                  <polyline
+                    points={drawnPathPoints
+                      .map((p) => `${p.x},${p.y}`)
+                      .join(" ")}
+                    fill="none"
+                    stroke={activeColor}
+                    strokeWidth={7}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    opacity={0.95}
+                  />
+                )}
+
+                {/* 진행 중 토큰 */}
+                {tokenPos && (
+                  <g>
+                    <circle
+                      cx={tokenPos.x}
+                      cy={tokenPos.y}
+                      r={12}
+                      fill={activeColor}
+                      opacity={0.95}
+                    />
+                    <circle
+                      cx={tokenPos.x}
+                      cy={tokenPos.y}
+                      r={22}
+                      fill={activeColor}
+                      opacity={0.12}
+                    />
+                    <circle
+                      cx={tokenPos.x - 4}
+                      cy={tokenPos.y - 2}
+                      r={1.6}
+                      fill="rgba(255,255,255,.95)"
+                    />
+                    <circle
+                      cx={tokenPos.x + 4}
+                      cy={tokenPos.y - 2}
+                      r={1.6}
+                      fill="rgba(255,255,255,.95)"
+                    />
+                    <path
+                      d={`M ${tokenPos.x - 4} ${tokenPos.y + 4} Q ${tokenPos.x} ${tokenPos.y + 7} ${tokenPos.x + 4} ${tokenPos.y + 4}`}
+                      stroke="rgba(255,255,255,.9)"
+                      strokeWidth="1.6"
+                      fill="none"
+                      strokeLinecap="round"
+                    />
+                  </g>
+                )}
+              </svg>
+            </div>
+
+            {/* BOTTOM */}
+            <div className="gridBottom">
+              {Array.from({ length: N }, (_, i) => {
+                const opened = !!openedCols[i];
+                const lastRunToHere = [...completed]
+                  .reverse()
+                  .find((r) => r.endCol === i);
+                const borderColor = opened
+                  ? (lastRunToHere?.color ?? "#e5e7eb")
+                  : "rgba(229,231,235,.95)";
+
+                const imgSrc = opened ? gift15 : closedGifts[i];
+
+                return (
+                  <div
+                    className="giftCell"
+                    key={i}
+                    style={{
+                      border: opened
+                        ? `2px solid ${borderColor}`
+                        : `1px solid ${borderColor}`,
+                    }}
+                  >
+                    <img
+                      src={imgSrc}
+                      alt={`gift-${i + 1}`}
+                      style={{
+                        width: 46,
+                        height: 46,
+                        objectFit: "contain",
+                        filter: opened
+                          ? "drop-shadow(0 0 10px rgba(0,0,0,0.18))"
+                          : "none",
+                        transform: opened ? "scale(1.06)" : "scale(1)",
+                        transition: "transform 160ms ease",
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          {/* (옵션) 버튼들: 필요하면 살려서 쓰기 */}
+          {/* 
+          <div style={{display:"flex", gap:8, marginTop:12, justifyContent:"flex-end"}}>
+            <button className="btn" onClick={onReset} disabled={isAnimating}>Reset</button>
+            <button className="btn" onClick={onRebuild} disabled={isAnimating}>Rebuild</button>
+          </div>
+          */}
         </div>
       </div>
-
-      {/* audio */}
-      <audio ref={audioRef} src={soundUrl} preload="auto" />
     </div>
   );
 }
