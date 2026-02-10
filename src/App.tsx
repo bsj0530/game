@@ -203,7 +203,7 @@ export default function App() {
       "사",
       "랑",
       "해",
-      "!",
+      "❤️",
     ],
     [],
   );
