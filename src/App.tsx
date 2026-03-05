@@ -2,27 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import soundUrl from "@/assets/sound.mp3";
 import confetti from "canvas-confetti";
 
-// ✅ 아래 선물 이미지: 닫힘(1~14), 열림(15)
-import gift1 from "@/assets/gift1.png";
-import gift2 from "@/assets/gift2.png";
-import gift3 from "@/assets/gift3.png";
-import gift4 from "@/assets/gift4.png";
-import gift5 from "@/assets/gift5.png";
-import gift6 from "@/assets/gift6.png";
-import gift7 from "@/assets/gift7.png";
-import gift8 from "@/assets/gift8.png";
-import gift9 from "@/assets/gift9.png";
-import gift10 from "@/assets/gift10.png";
-import gift11 from "@/assets/gift11.png";
-import gift12 from "@/assets/gift12.png";
-import gift13 from "@/assets/gift13.png";
-import gift14 from "@/assets/gift14.png";
-import gift15 from "@/assets/gift15.png";
-
 type Ladder = boolean[][];
 type Point = { x: number; y: number };
 
-const N = 14;
 const ROWS = 12;
 
 const H = 560;
@@ -30,7 +12,7 @@ const PAD_X = 40;
 const TOP_H = 20;
 const BOT_H = 20;
 
-// ✅ TOP/BOTTOM 칸 사이 간격 (CSS와 계산이 반드시 같아야 정렬됨)
+// ✅ TOP/BOTTOM 칸 사이 간격
 const CELL_GAP = 10;
 
 const COLORS_14 = [
@@ -52,6 +34,10 @@ const COLORS_14 = [
 
 const LADDER_STROKE = "rgba(148,163,184,.78)";
 const LADDER_STROKE_W = 2.6;
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
 
 function buildLadder(cols: number, rows: number): Ladder {
   const ladder: Ladder = Array.from({ length: rows }, () =>
@@ -187,48 +173,41 @@ type CompletedRun = {
   endCol: number;
 };
 
+type SettingsDraft = { n: number; top: string[]; bottom: string[] };
+
 export default function App() {
-  const topCells = useMemo(
-    () => [
-      "친",
-      "구",
-      "들",
-      "아",
-      "고",
-      "마",
-      "워",
-      "미",
-      "안",
-      "해",
-      "사",
-      "랑",
-      "해",
-      "❤️",
-    ],
-    [],
+  // ✅ 인원 수: 2~10
+  const [N, setN] = useState(6);
+
+  // ✅ 위/아래 텍스트
+  const [topCells, setTopCells] = useState<string[]>(
+    Array.from({ length: 6 }, (_, i) => `이름${i + 1}`),
+  );
+  const [bottomCells, setBottomCells] = useState<string[]>(
+    Array.from({ length: 6 }, (_, i) => `결과${i + 1}`),
   );
 
-  const closedGifts = useMemo(
-    () => [
-      gift1,
-      gift2,
-      gift3,
-      gift4,
-      gift5,
-      gift6,
-      gift7,
-      gift8,
-      gift9,
-      gift10,
-      gift11,
-      gift12,
-      gift13,
-      gift14,
-    ],
-    [],
+  // ✅ 설정 모달 state
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<SettingsDraft | null>(
+    null,
   );
 
-  // ✅ "어떤 화면비에서도 스크롤 없이 딱 맞게" = 카드 전체를 scale로 맞추기
+  // N 변경 시 배열 길이 맞추기
+  useEffect(() => {
+    setTopCells((prev) => {
+      const next = prev.slice(0, N);
+      while (next.length < N) next.push(`이름${next.length + 1}`);
+      return next;
+    });
+    setBottomCells((prev) => {
+      const next = prev.slice(0, N);
+      while (next.length < N) next.push(`결과${next.length + 1}`);
+      return next;
+    });
+  }, [N]);
+
+  // ✅ "어떤 화면비에서도 스크롤 없이 딱 맞게" = 카드 전체 scale
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [scale, setScale] = useState(1);
 
@@ -237,23 +216,19 @@ export default function App() {
     if (!el) return;
 
     const recompute = () => {
-      // transform은 레이아웃 크기에 영향을 안 주므로 offsetWidth/Height는 "원래 크기"를 준다
       const baseW = el.offsetWidth;
       const baseH = el.offsetHeight;
 
       const vw = window.innerWidth;
       const vh = window.innerHeight;
 
-      // page padding 28px * 2 만큼 안전 여유
       const safePad = 56;
-
       const sx = (vw - safePad) / Math.max(1, baseW);
       const sy = (vh - safePad) / Math.max(1, baseH);
 
       setScale(Math.min(1, sx, sy));
     };
 
-    // 초기 1회 (폰트/이미지 로딩 후 정확해지도록 rAF)
     const raf = requestAnimationFrame(recompute);
 
     const ro = new ResizeObserver(() => recompute());
@@ -318,39 +293,24 @@ export default function App() {
       gravity: 0.75,
       decay: 0.9,
     });
-
-    window.setTimeout(() => {
-      confetti({
-        ...defaults,
-        particleCount: 70,
-        spread: 300,
-        startVelocity: 45,
-        colors: [color, color, "#ffffff"],
-        shapes: ["circle"],
-        scalar: 1.8,
-        ticks: 95,
-        gravity: 0.85,
-        decay: 0.91,
-      });
-    }, 90);
-
-    window.setTimeout(() => {
-      confetti({
-        ...defaults,
-        particleCount: 40,
-        spread: 70,
-        startVelocity: 70,
-        colors: [color, "#ffffff"],
-        shapes: ["square"],
-        scalar: 1.6,
-        ticks: 80,
-        gravity: 0.2,
-        decay: 0.92,
-      });
-    }, 160);
   };
 
+  // ✅ 사다리
   const [ladder, setLadder] = useState<Ladder>(() => buildLadder(N, ROWS));
+  useEffect(() => {
+    setLadder(buildLadder(N, ROWS));
+    // 진행 상태 초기화
+    setPicked(null);
+    setAnimT(0);
+    setIsAnimating(false);
+    setCompleted([]);
+    setOpenedCols({});
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [N]);
 
   const [picked, setPicked] = useState<number | null>(null);
   const [animT, setAnimT] = useState(0);
@@ -373,7 +333,7 @@ export default function App() {
       const left = PAD_X + i * (colW + CELL_GAP);
       return left + colW / 2;
     });
-  }, [ladderW]);
+  }, [ladderW, N]);
 
   const activeColor = picked == null ? "#111827" : COLORS_14[picked];
 
@@ -389,7 +349,7 @@ export default function App() {
       yBottom,
       yStep,
     );
-  }, [ladder, picked, xCenters, yTop, yBottom, yStep]);
+  }, [ladder, picked, xCenters, yTop, yBottom, yStep, N]);
 
   const lengths = useMemo(() => {
     if (!path) return null;
@@ -421,8 +381,8 @@ export default function App() {
     const tick = (now: number) => {
       const elapsed = now - startRef.current;
       const t = Math.min(1, elapsed / DURATION);
-
       const eased = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+
       setAnimT(eased);
 
       if (t < 1) {
@@ -472,23 +432,85 @@ export default function App() {
     setPicked(idx);
   };
 
-  const onReset = () => {
+  const onNewGame = () => {
+    if (isAnimating) return;
     setPicked(null);
     setAnimT(0);
     setIsAnimating(false);
     setCompleted([]);
     setOpenedCols({});
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    setLadder(buildLadder(N, ROWS));
   };
 
-  const onRebuild = () => {
-    if (isAnimating) return;
-    onReset();
-    setLadder(buildLadder(N, ROWS));
+  // ✅ 설정 열기/닫기/적용
+  const openSettings = () => {
+    setSettingsDraft({ n: N, top: [...topCells], bottom: [...bottomCells] });
+    setSettingsOpen(true);
+  };
+
+  const closeSettings = () => {
+    setSettingsOpen(false);
+    setSettingsDraft(null);
+  };
+
+  const applySettings = () => {
+    if (!settingsDraft) return;
+
+    const nextN = clamp(settingsDraft.n, 2, 10);
+
+    const t = settingsDraft.top.slice(0, nextN);
+    while (t.length < nextN) t.push(`이름${t.length + 1}`);
+
+    const b = settingsDraft.bottom.slice(0, nextN);
+    while (b.length < nextN) b.push(`결과${b.length + 1}`);
+
+    setN(nextN);
+    setTopCells(t);
+    setBottomCells(b);
+
+    setSettingsOpen(false);
+    setSettingsDraft(null);
+  };
+
+  const setDraftN = (next: number) => {
+    setSettingsDraft((prev) => {
+      if (!prev) return prev;
+      const nn = clamp(next, 2, 10);
+
+      const top = prev.top.slice(0, nn);
+      while (top.length < nn) top.push(`이름${top.length + 1}`);
+
+      const bottom = prev.bottom.slice(0, nn);
+      while (bottom.length < nn) bottom.push(`결과${bottom.length + 1}`);
+
+      return { n: nn, top, bottom };
+    });
+  };
+
+  const updateDraftTop = (i: number, val: string) => {
+    setSettingsDraft((prev) => {
+      if (!prev) return prev;
+      const top = [...prev.top];
+      top[i] = val;
+      return { ...prev, top };
+    });
+  };
+
+  const updateDraftBottom = (i: number, val: string) => {
+    setSettingsDraft((prev) => {
+      if (!prev) return prev;
+      const bottom = [...prev.bottom];
+      bottom[i] = val;
+      return { ...prev, bottom };
+    });
   };
 
   return (
     <div className="page">
-      {/* audio (한 번만) */}
       <audio ref={audioRef} src={soundUrl} preload="auto" />
 
       <style>{`
@@ -498,7 +520,7 @@ export default function App() {
           align-items:center;
           justify-content:center;
           padding:28px;
-          overflow:hidden; /* ✅ 스크롤 방지 */
+          overflow:hidden;
           background:
             radial-gradient(1200px 600px at 20% 10%, rgba(255, 205, 231, .55), transparent 60%),
             radial-gradient(900px 500px at 80% 20%, rgba(187, 255, 241, .55), transparent 60%),
@@ -526,12 +548,7 @@ export default function App() {
           50%{ transform: translate(0,-18px) scale(1.04); }
         }
 
-        /* ✅ 카드 전체를 화면에 맞게 scale */
-        .fitWrap{
-          transform-origin:center;
-          will-change: transform;
-        }
-
+        .fitWrap{ transform-origin:center; will-change: transform; }
         .card{
           width:min(1040px, 100%);
           background: rgba(255,255,255,.82);
@@ -570,26 +587,23 @@ export default function App() {
           border: 1px solid rgba(229,231,235,.95);
           background: rgba(255,255,255,.92);
           cursor:pointer;
-          font-size:18px;
+          font-size:16px;
           font-weight:900;
           box-shadow: 0 8px 18px rgba(0,0,0,.06);
           transition: transform .12s ease, box-shadow .12s ease;
+          padding: 0 10px;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
         }
         .cellBtn:hover{ transform: translateY(-1px); box-shadow: 0 12px 26px rgba(0,0,0,.08); }
         .cellBtn:active{ transform: translateY(0px) scale(.98); }
         .cellBtn[disabled]{ cursor:not-allowed; opacity:.7; }
 
         .ladderWrap{ width: 100%; margin-top: 6px; }
-        .svgBox{
-          display:block;
-          width:100%;
-          height:auto;
-          background: transparent;
-          border: none;
-          border-radius: 0;
-        }
+        .svgBox{ display:block; width:100%; height:auto; background: transparent; }
 
-        .giftCell{
+        .resultCell{
           width:100%;
           height: 58px;
           border-radius: 16px;
@@ -598,8 +612,142 @@ export default function App() {
           display:flex;
           align-items:center;
           justify-content:center;
-          padding: 6px;
+          padding: 6px 10px;
           box-shadow: 0 8px 18px rgba(0,0,0,.06);
+          user-select:none;
+          font-weight: 900;
+          overflow:hidden;
+          text-overflow:ellipsis;
+          white-space:nowrap;
+        }
+
+        .gearBtn{
+          position:absolute;
+          top: 12px;
+          right: 12px;
+          width: 40px;
+          height: 40px;
+          border-radius: 14px;
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.9);
+          box-shadow: 0 10px 22px rgba(0,0,0,.08);
+          cursor:pointer;
+          font-size: 18px;
+          font-weight: 900;
+        }
+
+        .modalOverlay{
+          position:fixed;
+          inset:0;
+          background: rgba(15,23,42,.35);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          padding: 18px;
+          z-index: 20000;
+        }
+        .modal{
+          width: min(720px, 100%);
+          background: rgba(255,255,255,.92);
+          border: 1px solid rgba(255,255,255,.7);
+          backdrop-filter: blur(10px);
+          border-radius: 22px;
+          box-shadow: 0 22px 60px rgba(17,24,39,.22);
+          padding: 16px;
+        }
+        .modalHeader{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 10px;
+          margin-bottom: 10px;
+        }
+        .modalTitle{
+          font-weight: 900;
+          font-size: 18px;
+        }
+        .row{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap: 10px;
+          padding: 10px;
+          border-radius: 16px;
+          border: 1px solid rgba(229,231,235,.9);
+          background: rgba(255,255,255,.75);
+          margin-bottom: 10px;
+        }
+        .rowLabel{
+          font-weight: 900;
+        }
+        .stepper{
+          display:flex;
+          align-items:center;
+          gap: 10px;
+        }
+        .iconBtn{
+          width: 34px;
+          height: 34px;
+          border-radius: 999px;
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.92);
+          cursor:pointer;
+          font-weight: 900;
+          font-size: 18px;
+        }
+        .iconBtn:disabled{ cursor:not-allowed; opacity:.6; }
+
+        .gridEdit{
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 10px;
+          margin-top: 10px;
+        }
+        .field{
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.85);
+          border-radius: 16px;
+          padding: 10px;
+        }
+        .fieldTitle{
+          font-weight: 900;
+          margin-bottom: 8px;
+          font-size: 14px;
+        }
+        .input{
+          width:100%;
+          height: 36px;
+          border-radius: 12px;
+          border: 1px solid rgba(229,231,235,.95);
+          padding: 0 10px;
+          outline: none;
+          font-weight: 800;
+          background: rgba(255,255,255,.95);
+          margin-bottom: 8px;
+        }
+        .actions{
+          display:flex;
+          justify-content:flex-end;
+          gap: 8px;
+          margin-top: 12px;
+        }
+        .btn{
+          height: 38px;
+          padding: 0 12px;
+          border-radius: 14px;
+          border: 1px solid rgba(229,231,235,.95);
+          background: rgba(255,255,255,.9);
+          font-weight: 900;
+          cursor:pointer;
+        }
+        .btnPrimary{
+          background: rgba(17,24,39,.92);
+          color: white;
+        }
+        .btnDanger{
+          background: rgba(239,68,68,.92);
+          color: white;
+          border-color: rgba(239,68,68,.92);
         }
       `}</style>
 
@@ -609,17 +757,25 @@ export default function App() {
 
       <div className="fitWrap" style={{ transform: `scale(${scale})` }}>
         <div ref={cardRef} className="card">
+          {/* ⚙️ 설정 */}
+          <button
+            className="gearBtn"
+            onClick={openSettings}
+            disabled={isAnimating}
+            title="설정"
+          >
+            ⚙️
+          </button>
+
           <div ref={ladderRef} className="laneBox">
-            {/* TOP */}
+            {/* TOP: 클릭하면 출발 */}
             <div className="gridTop">
-              {topCells.map((t, i) => {
+              {Array.from({ length: N }, (_, i) => {
                 const done = completed.some((r) => r.startIdx === i);
                 const active = picked === i;
                 const c = COLORS_14[i];
 
-                // ✅ 완료(done)도 배경색 유지
                 const filled = done || active;
-
                 const bg = filled ? c : "rgba(255,255,255,.92)";
                 const border = filled
                   ? `2px solid ${c}`
@@ -633,8 +789,9 @@ export default function App() {
                     onClick={() => onPick(i)}
                     disabled={isAnimating || done}
                     style={{ background: bg, border, color }}
+                    title="클릭하면 사다리 출발"
                   >
-                    {t}
+                    {topCells[i] ?? `이름${i + 1}`}
                   </button>
                 );
               })}
@@ -757,56 +914,138 @@ export default function App() {
               </svg>
             </div>
 
-            {/* BOTTOM */}
+            {/* ✅ BOTTOM: 이제 ??? 대신 입력값 그대로 보여주기 */}
             <div className="gridBottom">
               {Array.from({ length: N }, (_, i) => {
                 const opened = !!openedCols[i];
                 const lastRunToHere = [...completed]
                   .reverse()
                   .find((r) => r.endCol === i);
+
                 const borderColor = opened
                   ? (lastRunToHere?.color ?? "#e5e7eb")
                   : "rgba(229,231,235,.95)";
 
-                const imgSrc = opened ? gift15 : closedGifts[i];
-
                 return (
                   <div
-                    className="giftCell"
+                    className="resultCell"
                     key={i}
                     style={{
                       border: opened
                         ? `2px solid ${borderColor}`
                         : `1px solid ${borderColor}`,
+                      opacity: opened ? 1 : 0.9,
                     }}
+                    title={opened ? "열림" : "미공개"}
                   >
-                    <img
-                      src={imgSrc}
-                      alt={`gift-${i + 1}`}
-                      style={{
-                        width: 46,
-                        height: 46,
-                        objectFit: "contain",
-                        filter: opened
-                          ? "drop-shadow(0 0 10px rgba(0,0,0,0.18))"
-                          : "none",
-                        transform: opened ? "scale(1.06)" : "scale(1)",
-                        transition: "transform 160ms ease",
-                      }}
-                    />
+                    {bottomCells[i] ?? `결과${i + 1}`}
                   </div>
                 );
               })}
             </div>
           </div>
 
-          {/* (옵션) 버튼들: 필요하면 살려서 쓰기 */}
-          {/* 
-          <div style={{display:"flex", gap:8, marginTop:12, justifyContent:"flex-end"}}>
-            <button className="btn" onClick={onReset} disabled={isAnimating}>Reset</button>
-            <button className="btn" onClick={onRebuild} disabled={isAnimating}>Rebuild</button>
-          </div>
-          */}
+          {/* 설정 모달 */}
+          {settingsOpen && settingsDraft && (
+            <div
+              className="modalOverlay"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) closeSettings();
+              }}
+            >
+              <div className="modal">
+                <div className="modalHeader">
+                  <div className="modalTitle">설정</div>
+                  <button className="btn" onClick={closeSettings} type="button">
+                    닫기
+                  </button>
+                </div>
+
+                <div className="row">
+                  <div className="rowLabel">인원 수</div>
+                  <div className="stepper">
+                    <button
+                      className="iconBtn"
+                      onClick={() => setDraftN((settingsDraft?.n ?? N) - 1)}
+                      disabled={(settingsDraft?.n ?? N) <= 2}
+                      type="button"
+                    >
+                      −
+                    </button>
+                    <div
+                      style={{
+                        minWidth: 64,
+                        textAlign: "center",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {settingsDraft?.n ?? N}명
+                    </div>
+                    <button
+                      className="iconBtn"
+                      onClick={() => setDraftN((settingsDraft?.n ?? N) + 1)}
+                      disabled={(settingsDraft?.n ?? N) >= 10}
+                      type="button"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                <div className="gridEdit">
+                  <div className="field">
+                    <div className="fieldTitle">위(이름)</div>
+                    {Array.from({ length: settingsDraft.n }, (_, i) => (
+                      <input
+                        key={`t-${i}`}
+                        className="input"
+                        value={settingsDraft.top[i] ?? ""}
+                        onChange={(e) => updateDraftTop(i, e.target.value)}
+                        placeholder={`이름${i + 1}`}
+                      />
+                    ))}
+                  </div>
+
+                  <div className="field">
+                    <div className="fieldTitle">아래(결과)</div>
+                    {Array.from({ length: settingsDraft.n }, (_, i) => (
+                      <input
+                        key={`b-${i}`}
+                        className="input"
+                        value={settingsDraft.bottom[i] ?? ""}
+                        onChange={(e) => updateDraftBottom(i, e.target.value)}
+                        placeholder={`결과${i + 1}`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="actions">
+                  <button
+                    className="btn btnDanger"
+                    onClick={() => {
+                      onNewGame();
+                      closeSettings();
+                    }}
+                    disabled={isAnimating}
+                    type="button"
+                  >
+                    새 게임(사다리 재생성)
+                  </button>
+                  <button className="btn" onClick={closeSettings} type="button">
+                    취소
+                  </button>
+                  <button
+                    className="btn btnPrimary"
+                    onClick={applySettings}
+                    type="button"
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
